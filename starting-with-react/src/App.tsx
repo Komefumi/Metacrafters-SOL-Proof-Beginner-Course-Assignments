@@ -87,10 +87,37 @@ function App() {
     }
   };
 
+  const disconnectWallet = async () => {
+    // @ts-ignore
+    const { solana } = window;
+    if (solana) {
+      await solana.disconnect();
+      setWalletKey(undefined);
+    }
+  };
+
   // HTML code for the app
   return (
     <div className="App">
       <header className="App-header">
+        {provider && walletKey && (
+          <button
+            style={{
+              fontSize: "16px",
+              padding: "12.5px",
+              fontWeight: "bold",
+              borderRadius: "5px",
+              marginBottom: "auto",
+              marginLeft: "auto",
+              marginTop: "12.5px",
+              marginRight: "12.5px",
+            }}
+            onClick={disconnectWallet}
+          >
+            Disconnect
+          </button>
+        )}
+
         <h2>Connect to Phantom Wallet</h2>
       </header>
       {provider && !walletKey && (
@@ -100,6 +127,7 @@ function App() {
             padding: "15px",
             fontWeight: "bold",
             borderRadius: "5px",
+            marginTop: "12.5px",
           }}
           onClick={connectWallet}
         >
