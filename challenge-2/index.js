@@ -1,13 +1,11 @@
-// Import Solana web3 functinalities
 const {
-  Connection,
   PublicKey,
+  LAMPORTS_PER_SOL,
+  Connection,
   clusterApiUrl,
   Keypair,
-  LAMPORTS_PER_SOL,
   Transaction,
   SystemProgram,
-  sendAndConfirmRawTransaction,
   sendAndConfirmTransaction,
 } = require("@solana/web3.js");
 
@@ -27,65 +25,124 @@ const getWalletBalance = async (publicKey, conn, name) => {
       } SOL`
     );
   } catch (err) {
-    console.log(err);
+    console.error(err);
+    throw err;
   }
 };
 
-const transferSol = async () => {
-  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+const operate = async () => {
+  const theApiURL = clusterApiUrl("devnet");
+  console.log({ theApiURL });
+  const connection = new Connection(theApiURL, "confirmed");
+  const names = {
+    sender: "Sender",
+    receiverOriginal: "Receiver (original)",
+    receiverAnother: "Receiver (another guy)",
+  };
 
-  // Get Keypair from Secret Key
-  var from = Keypair.fromSecretKey(DEMO_FROM_SECRET_KEY);
+  const gwb = (publicKey, name) =>
+    getWalletBalance(publicKey, connection, name);
 
-  // Other things to try:
-  // 1) Form array from userSecretKey
-  // const from = Keypair.fromSecretKey(Uint8Array.from(userSecretKey));
-  // 2) Make a new Keypair (starts with 0 SOL)
-  // const from = Keypair.generate();
+  const sender = Keypair.fromSecretKey(DEMO_FROM_SECRET_KEY);
+  const receiverOriginal = Keypair.generate();
+  const receiverAnother = Keypair.generate();
 
-  // Generate another Keypair (account we'll be sending to)
-  const to = Keypair.generate();
+  await gwb(sender.publicKey, names.sender);
+  await gwb(receiverOriginal.publicKey, names.receiverOriginal);
 
-  // Aidrop 2 SOL to Sender wallet
-  await getWalletBalance(from.publicKey, connection, "Sender");
-  console.log("Airdopping some SOL to Sender wallet!");
-  const fromAirDropSignature = await connection.requestAirdrop(
-    new PublicKey(from.publicKey),
+  console.log(
+    `\n\nAirdopping some SOL (2 SOL) to ${names.sender} wallet to get started....\n\n`
+  );
+  const signatures = {};
+  signatures.airDropToSender = await connection.requestAirdrop(
+    new PublicKey(sender.publicKey),
     2 * LAMPORTS_PER_SOL
   );
-  await getWalletBalance(from.publicKey, connection, "Sender");
-  await getWalletBalance(to.publicKey, connection, "Receiver");
-  // Latest blockhash (unique identifer of the block) of the cluster
-  let latestBlockHash = await connection.getLatestBlockhash();
-
-  // Confirm transaction using the last valid block height (refers to its time)
-  // to check for transaction expiration
+  console.log("Airdrop complete, now confirming");
+  const blockHashAfterAirdrop = await connection.getLatestBlockhash();
   await connection.confirmTransaction({
-    blockhash: latestBlockHash.blockhash,
-    lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-    signature: fromAirDropSignature,
+    blockhash: blockHashAfterAirdrop.blockhash,
+    lastValidBlockHeight: blockHashAfterAirdrop.lastValidBlockHeight,
+    signature: signatures.airDropToSender,
   });
+  console.log(`Airdrop confirmed, now displaying ${names.sender} balance\n`);
+  await gwb(sender.publicKey, names.sender);
 
-  console.log("Airdrop completed for the Sender account");
-  await getWalletBalance(from.publicKey, connection, "Sender");
+  console.log(
+    `\nGoing to transfer 0.01 SOL from ${names.sender} to ${names.receiverOriginal}`
+  );
 
-  // Send money from "from" wallet and into "to" wallet
-  var transaction = new Transaction().add(
+  const transactions = {};
+
+  transactions.senderToReceiverOriginal = new Transaction().add(
     SystemProgram.transfer({
-      fromPubkey: from.publicKey,
-      toPubkey: to.publicKey,
+      fromPubkey: sender.publicKey,
+      toPubkey: receiverOriginal.publicKey,
       lamports: LAMPORTS_PER_SOL / 100,
     })
   );
 
-  // Sign transaction
-  var signature = await sendAndConfirmTransaction(connection, transaction, [
-    from,
-  ]);
-  console.log("Transfer from sender to receiver complete");
-  await getWalletBalance(from.publicKey, connection, "Sender");
-  await getWalletBalance(to.publicKey, connection, "Receiver");
-  console.log("Signature is ", signature);
+  signatures.senderToReceiverOriginal = await sendAndConfirmTransaction(
+    connection,
+    transactions.senderToReceiverOriginal,
+    [sender]
+  );
+  console.log(
+    `\nTransfer from ${names.sender} to ${names.receiverOriginal} complete\n`
+  );
+  await gwb(sender.publicKey, names.sender);
+  await gwb(receiverOriginal.publicKey, names.receiverOriginal);
+
+  console.log(
+    `\nSignature of the transaction is ${signatures.senderToReceiverOriginal}\n`
+  );
+
+  console.log(
+    `Going to transfer half of ${names.sender}'s balance to a third wallet. Let's call them: ${names.receiverAnother}\n`
+  );
+  await gwb(receiverAnother.publicKey, names.receiverAnother);
+
+  const currentBalanceOfSender = await connection.getBalance(
+    new PublicKey(sender.publicKey)
+  );
+  const halfOfSenderBalance = currentBalanceOfSender / 2;
+
+  console.log(
+    `\n${names.sender}'s current balance is ${
+      currentBalanceOfSender / LAMPORTS_PER_SOL
+    } SOL`
+  );
+  console.log(
+    `Half of it (which we'll now send) is ${
+      halfOfSenderBalance / LAMPORTS_PER_SOL
+    } SOL`
+  );
+
+  transactions.senderToReceiverAnother = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: sender.publicKey,
+      toPubkey: receiverAnother.publicKey,
+      lamports: halfOfSenderBalance,
+    })
+  );
+
+  signatures.senderToReceiverAnother = await sendAndConfirmTransaction(
+    connection,
+    transactions.senderToReceiverAnother,
+    [sender]
+  );
+  console.log(
+    `Transfer from ${names.sender} to ${names.receiverAnother} complete`
+  );
+  console.log(
+    `\nSignature of this transaction is ${signatures.senderToReceiverAnother}`
+  );
+
+  console.log("\n\n\nDisplaying balances of all three wallets:\n\n");
+
+  await gwb(sender.publicKey, names.sender);
+  await gwb(receiverOriginal.publicKey, names.receiverOriginal);
+  await gwb(receiverAnother.publicKey, names.receiverAnother);
 };
 
-transferSol();
+operate();
